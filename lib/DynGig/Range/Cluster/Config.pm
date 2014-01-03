@@ -13,6 +13,7 @@ use YAML::XS;
 use File::Spec;
 use Digest::MD5;
 use Compress::Zlib;
+use File::Spec;
 
 use DynGig::Range::Cluster::EZDB;
 
@@ -106,11 +107,10 @@ sub load
 
         next if $conf->[1] && $mtime <= $conf->[1];
 
-        $conf{$name} = $conf->[0]->get();
+        $conf{$name} = $conf->[0]->reload()->get();
         $conf->[1] = $mtime;
     }
 
-    map { delete $conf{$_} unless %{ $conf{$_} } } keys %conf;
     return wantarray ? %conf : \%conf;
 }
 
@@ -192,6 +192,29 @@ sub AUTOLOAD
             if ( defined $value ) ## find keys by cluster:value
             {
                 my $list = $V->{$table}{$value}{$cluster};
+
+                if ( $list && @$list == 1 && $list->[0] =~ /^##(.+)/ )
+                {
+                        my $newlist = [];
+                        my @param = split '_', $1;
+                        if( @param >= 1 )
+                        {
+                            my $plugin = shift @param;
+                            my $pfile = File::Spec->join(
+                                "/devops/tools/var/range/plugin", $plugin );
+                            if ( -f $pfile )
+                            {
+                                eval
+                                {
+                                    no warnings;
+                                    no strict 'vars';
+                                    local $PARAM = \@param;
+                                    $newlist = do $pfile;
+                                };
+                            }
+                        }
+                        $list = $newlist; 
+                }
                 return wantarray ? @$list : $list if $list;
             }
             elsif ( defined $key ) ## find value by cluster:key
